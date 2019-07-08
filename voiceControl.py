@@ -4,6 +4,11 @@ import webcamPy as wpy
 import cv2
 import sys
 from threading import Thread
+from porcupine import Porcupine
+import pyaudio
+import struct
+import soundfile
+from datetime import datetime
 
 
 def recognizeSpeech():
@@ -19,8 +24,8 @@ def recognizeSpeech():
             print("Got it! Now to recognize it...")
             try:
                 # recognize speech using Google Speech Recognition
-                #value = r.recognize_google(audio)
-                value = "pan to the left"
+                value = r.recognize_google(audio)
+                #value = "increase the brightness"
 
                 # we need some special handling here to correctly print unicode characters to standard output
                 if str is bytes:  # this version of Python uses bytes for strings (Python 2)
@@ -48,15 +53,19 @@ def parseResponse(response, cam):
         print(entities)
         print(property_)
         try:
-            action = next(iter(entities))
+            action = entities['direction'][0]['value']
+            print(action)
             property_ = entities['controlProperty'][0]['value']
+            print(property_)
             execute(action, property_, cam)
         except KeyError:
             print("Property cannot be obtained through STT!")
             print("Here was what Wit got:", response)
 
 def execute(action, property_, cam):
-    if action == 'increase':
+
+    if property_ == 'zoom': 
+        if action == 'in':
             current = cam.getCameraControlProperty(property_)[0]
             print(current)
             max_ = cam.getCameraControlProperty(property_)[2]
@@ -65,17 +74,59 @@ def execute(action, property_, cam):
                 new = max_
             cam.setCameraControlProperty(property_, new)
             print("increased ", property_)
-            
-    if action == 'decrease':
+
+        if action == 'out':
             current = cam.getCameraControlProperty(property_)[0]
             print(current)
             min_ = cam.getCameraControlProperty(property_)[1]
             new = current - 100
             if new < min_:
-                new = max_
+                new = min_
             cam.setCameraControlProperty(property_, new)
-            print("decreased ", property_)
-    
+            print("increased ", property_)
+
+    if property_ == 'pan' or property_ == 'tilt':
+        print(cam.getCameraControlProperty('zoom'))
+        zoom_factor = cam.getCameraControlProperty('zoom')[0]
+        if zoom_factor < cam.getCameraControlProperty('zoom')[3]:
+            zoom = zoom_factor + 100
+            max_ = cam.getCameraControlProperty('zoom')[2]
+            if zoom > max_:
+                zoom = max_
+            cam.setCameraControlProperty('zoom', zoom)
+
+        if property_ == 'tilt':
+            if action == 'up':
+                print('up')
+            if action == 'down':
+                print('down')
+        if property_ == 'pan':
+            if action == 'left':
+                print('left')
+            if action == 'right':
+                print('right')
+
+
+    if action == 'increase' or action == 'raise':
+        current = cam.getCameraControlProperty(property_)[0]
+        print(current)
+        max_ = cam.getCameraControlProperty(property_)[2]
+        new = current + 100
+        if new > max_:
+            new = max_
+        cam.setCameraControlProperty(property_, new)
+        print("increased ", property_)
+            
+    if action == 'decrease' or action == 'lower':
+        current = cam.getCameraControlProperty(property_)[0]
+        print(current)
+        min_ = cam.getCameraControlProperty(property_)[1]
+        new = current - 100
+        if new < min_:
+            new = min_
+        cam.setCameraControlProperty(property_, new)
+        print("decreased ", property_)
+
     
 def getCam():
     cam = wpy.Webcam()
@@ -93,7 +144,53 @@ def showStream(cam):
         k = cv2.waitKey(30)
         if k == 27 or k == ord('q'):
             break
-            
+
+def wakeWord(library_path, keyword_file_paths, model_file_path):
+        try:
+            if not keyword_file_paths:
+                raise ValueError('keyword file paths are missing')
+
+            num_keywords = len(keyword_file_paths)
+
+            sensitivities = 0.5
+            keyword_file_paths = [x.strip() for x in keyword_file_paths.split(',')]
+
+            if isinstance(sensitivities, float):
+                sensitivities = [sensitivities] * len(keyword_file_paths)
+            else:
+                sensitivities = [float(x) for x in sensitivities.split(',')]
+            porcupine = Porcupine(
+                library_path=library_path,
+                model_file_path=model_file_path,
+                keyword_file_paths=keyword_file_paths,
+                sensitivities=sensitivities)
+
+            pa = pyaudio.PyAudio()
+            audio_stream = pa.open(
+                rate=porcupine.sample_rate,
+                channels=1,
+                format=pyaudio.paInt16,
+                input=True,
+                frames_per_buffer=porcupine.frame_length,
+                input_device_index=None)
+
+            while True:
+                pcm = audio_stream.read(porcupine.frame_length)
+                pcm = struct.unpack_from("h" * porcupine.frame_length, pcm)
+
+
+                result = porcupine.process(pcm)
+                if num_keywords == 1 and result:
+                    print('[%s] detected keyword' % str(datetime.now()))
+                    audio_stream.close()
+                    value = recognizeSpeech()
+                    response = requestWit(value)
+                    parseResponse(response, cam)
+                elif num_keywords > 1 and result >= 0:
+                    print("0")
+
+        except KeyboardInterrupt:
+            print('stopping ...')
 
 if __name__ == "__main__":
     cam = getCam()
@@ -102,3 +199,6 @@ if __name__ == "__main__":
     value = recognizeSpeech()
     response = requestWit(value)
     parseResponse(response, cam)
+    #wakeWord('.\dependz\libpv_porcupine.dll', ".\Jabra_windows.ppn", ".\dependz\porcupine_params.pv")
+    
+    

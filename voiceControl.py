@@ -8,6 +8,7 @@ from porcupine import Porcupine
 import pyaudio
 import struct
 import soundfile
+import pyttsx3
 from datetime import datetime
 
 
@@ -15,17 +16,18 @@ def recognizeSpeech():
     r = sr.Recognizer()
     m = sr.Microphone()
     try:
+
         print("A moment of silence, please...")
         with m as source: r.adjust_for_ambient_noise(source)
         print("Set minimum energy threshold to {}".format(r.energy_threshold))
+        saySomething()
         while True:
-            print("Say something!")
+            #threaded text to speech bot so that the algorithm has time to calibrate
             with m as source: audio = r.listen(source)
-            print("Got it! Now to recognize it...")
             try:
                 # recognize speech using Google Speech Recognition
                 value = r.recognize_google(audio)
-                #value = "increase the brightness"
+                #value = "zoom out"
 
                 # we need some special handling here to correctly print unicode characters to standard output
                 if str is bytes:  # this version of Python uses bytes for strings (Python 2)
@@ -48,15 +50,11 @@ def requestWit(value):
 
 def parseResponse(response, cam):
     if response['entities']:
-        entities = response['entities']
-        property_ = entities['controlProperty']
-        print(entities)
-        print(property_)
         try:
+            entities = response['entities']
+            property_ = entities['controlProperty']
             action = entities['direction'][0]['value']
-            print(action)
             property_ = entities['controlProperty'][0]['value']
-            print(property_)
             execute(action, property_, cam)
         except KeyError:
             print("Property cannot be obtained through STT!")
@@ -69,9 +67,10 @@ def execute(action, property_, cam):
             current = cam.getCameraControlProperty(property_)[0]
             print(current)
             max_ = cam.getCameraControlProperty(property_)[2]
-            new = current + 100
+            new = current + 5
             if new > max_:
                 new = max_
+            print(new)
             cam.setCameraControlProperty(property_, new)
             print("increased ", property_)
 
@@ -79,32 +78,60 @@ def execute(action, property_, cam):
             current = cam.getCameraControlProperty(property_)[0]
             print(current)
             min_ = cam.getCameraControlProperty(property_)[1]
-            new = current - 100
+            new = current - 5
             if new < min_:
                 new = min_
             cam.setCameraControlProperty(property_, new)
-            print("increased ", property_)
+            print("decreased ", property_)
 
     if property_ == 'pan' or property_ == 'tilt':
         print(cam.getCameraControlProperty('zoom'))
         zoom_factor = cam.getCameraControlProperty('zoom')[0]
         if zoom_factor < cam.getCameraControlProperty('zoom')[3]:
-            zoom = zoom_factor + 100
+            zoom = zoom_factor + 4
+            print(zoom)
             max_ = cam.getCameraControlProperty('zoom')[2]
             if zoom > max_:
                 zoom = max_
             cam.setCameraControlProperty('zoom', zoom)
+        print(cam.getCameraControlProperty('zoom'))
 
         if property_ == 'tilt':
             if action == 'up':
-                print('up')
+                current = cam.getCameraControlProperty(property_)[0]
+                max_ = cam.getCameraControlProperty(property_)[2]
+                new = current + 100
+                if new > max_:
+                    new = max_
+                cam.setCameraControlProperty(property_, new)
+                print("tilted up")
+
             if action == 'down':
-                print('down')
+                current = cam.getCameraControlProperty(property_)[0]
+                min_ = cam.getCameraControlProperty(property_)[1]
+                new = current - 100
+                if new < min_:
+                    new = min_
+                cam.setCameraControlProperty(property_, new)
+                print("tilted down")
+
         if property_ == 'pan':
             if action == 'left':
-                print('left')
+                current = cam.getCameraControlProperty(property_)[0]
+                max_ = cam.getCameraControlProperty(property_)[2]
+                new = current + 100
+                if new > max_:
+                    new = max_
+                cam.setCameraControlProperty(property_, new)
+                print("panned to the left")
             if action == 'right':
-                print('right')
+                current = cam.getCameraControlProperty(property_)[0]
+                min_ = cam.getCameraControlProperty(property_)[1]
+                new = current - 100
+                if new < min_:
+                    new = min_
+                cam.setCameraControlProperty(property_, new)
+                print("panned to the right")
 
 
     if action == 'increase' or action == 'raise':
@@ -130,7 +157,7 @@ def execute(action, property_, cam):
     
 def getCam():
     cam = wpy.Webcam()
-    if not cam.open(3840, 1080, 30.0, "YUY2"):
+    if not cam.open(1280, 720, 30.0, "YUY2"):
         print("PanaCast could not be opened")
         sys.exit(1)
     print("opened Panacast interface!")
@@ -140,10 +167,17 @@ def showStream(cam):
     while True:
         f = cam.getFrame()
         f = cv2.cvtColor(f, cv2.COLOR_YUV2BGR_YUY2)
+        f = cv2.resize(f, (1280, 720))
         cv2.imshow('whoa', f)
         k = cv2.waitKey(30)
         if k == 27 or k == ord('q'):
             break
+
+def saySomething():
+    engine = pyttsx3.init()
+    engine.say('Say a command.')
+    engine.runAndWait()
+
 
 def wakeWord(library_path, keyword_file_paths, model_file_path):
         try:
@@ -182,12 +216,12 @@ def wakeWord(library_path, keyword_file_paths, model_file_path):
                 result = porcupine.process(pcm)
                 if num_keywords == 1 and result:
                     print('[%s] detected keyword' % str(datetime.now()))
-                    audio_stream.close()
-                    value = recognizeSpeech()
-                    response = requestWit(value)
-                    parseResponse(response, cam)
+                    #audio_stream.close()
+                    #value = recognizeSpeech()
+                    #response = requestWit(value)
+                    #parseResponse(response, cam)
                 elif num_keywords > 1 and result >= 0:
-                    print("0")
+                    pass
 
         except KeyboardInterrupt:
             print('stopping ...')
@@ -195,10 +229,10 @@ def wakeWord(library_path, keyword_file_paths, model_file_path):
 if __name__ == "__main__":
     cam = getCam()
     thread = Thread(target=showStream, args=(cam,))
+    #value = recognizeSpeech()
     thread.start()
-    value = recognizeSpeech()
-    response = requestWit(value)
-    parseResponse(response, cam)
-    #wakeWord('.\dependz\libpv_porcupine.dll', ".\Jabra_windows.ppn", ".\dependz\porcupine_params.pv")
+    #response = requestWit(value)
+    #parseResponse(response, cam)
+    wakeWord('.\dependz\libpv_porcupine.dll', ".\Jabra_windows.ppn", ".\dependz\porcupine_params.pv")
     
     

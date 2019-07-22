@@ -120,6 +120,10 @@ class PorcupineDemo(Thread):
                 if self._output_path is not None:
                     self._recorded_frames.append(pcm)
 
+                #value = voiceControl.recognizeSpeech()
+                #response = voiceControl.requestWit(value)
+                #voiceControl.parseResponse(response, cam)
+
                 result = porcupine.process(pcm)
                 if num_keywords == 1 and result:
                     print('[%s] detected keyword' % str(datetime.now()))
@@ -131,7 +135,7 @@ class PorcupineDemo(Thread):
                         channels=1,
                         format=pyaudio.paInt16,
                         input=True,
-                        frames_per_buffer=porcupine.frame_length,
+                          frames_per_buffer=porcupine.frame_length,
                         input_device_index=self._input_device_index)
                 elif num_keywords > 1 and result >= 0:
                     print('[%s] detected %s' % (str(datetime.now()), keyword_names[result]))
